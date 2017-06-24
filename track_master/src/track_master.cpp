@@ -8,12 +8,23 @@
 #include <sstream>
 
 //#define ROSINFO
-  int lowH = 55;
-  int highH = 105;
-  int lowS = 0;
-  int highS = 255;
-  int lowV = 0;
-  int highV = 255;
+#define DUMBFOLLOW
+
+#ifdef DUMBFOLLOW
+#include <geometry_msgs/Twist.h>
+ char dim0_label[] = "velocity";
+ const float goalDistance = 1000.0;
+ const float goalLocation = 320.0;
+ const float linKp = 0.1;
+ const float linKi = 0.01;
+ const float angKp = 0.1;
+#endif
+ int lowH = 55;
+ int highH = 105;
+ int lowS = 0;
+ int highS = 255;
+ int lowV = 0;
+ int highV = 255;
 
 static const std::string OPENCV_WINDOW = "Image window";
 
@@ -30,6 +41,11 @@ protected:
   sensor_msgs::ImageConstPtr depthImageIn_;
   cv_bridge::CvImagePtr rgbCvPtr;
   cv_bridge::CvImagePtr depthCvPtr;
+#ifdef DUMBFOLLOW
+  ros::Publisher rpm_pub;
+  float *objectDistance = NULL;
+  float *objectLocation = NULL;
+#endif
 
 public:
   ImageConverter()
@@ -39,7 +55,9 @@ public:
     rgb_sub = it_.subscribe("/camera/rgb/image_rect_color", 1, 
       &ImageConverter::rgbImageCb, this,image_transport::TransportHints("raw"));
     depth_sub = it_.subscribe("/camera/depth_registered/image_raw", 1,       	&ImageConverter::depthImageCb, this, image_transport::TransportHints("raw"));
-
+#ifdef DUMBFOLLOW 
+    rpm_pub = nh_.advertise<geometry_msgs::Twist>("velocity_commands", 5);
+#endif
     cv::namedWindow(OPENCV_WINDOW);
     cv::namedWindow("controller");
     cv::createTrackbar("Hue Lower Bound", "controller", &lowH, highH);
@@ -131,19 +149,18 @@ public:
     //cv::GaussianBlur(depthCvPtr->image,depthCvPtr->image,cv::Size(13,13),0,0);
 
     double aveDepth = 0;
+    double aveLocation = 0;
     int count = 0;
-    unsigned short max = 0;
     for(int i=0; i<(HSV.cols-1);i++)
     {
       for(int j=0; j<(HSV.rows-1);j++)
       {
         if(HSV.at<uchar>(cv::Point(i,j)) == 255)
         {
-          if (depthCvPtr->image.at<unsigned short>(cv::Point(i,j)) > max)
-            max = depthCvPtr->image.at<unsigned short>(cv::Point(i,j));
           if (depthCvPtr->image.at<unsigned short>(cv::Point(i,j)) != 0)
 	  {
             aveDepth += depthCvPtr->image.at<unsigned short>(cv::Point(i,j));
+            aveLocation += i;
             count++;
           }
         }
@@ -151,11 +168,15 @@ public:
     }
     std::ostringstream os;
     if (count == 0) count =1;
-    int depth = aveDepth/count;
+    float depth = aveDepth/count;
+    float location = aveLocation/count;
     os << "depth: " << depth << " mm " ; 
     cv::putText(HSV, os.str() ,cv::Point(rgbCvPtr->image.cols/4, rgbCvPtr->image.rows/8),1,1, cv::Scalar(255,255,255),2); 
-    
-    double minVal, maxVal;
+#ifdef DUMBFOLLOW
+    *objectDistance = depth;
+    *objectLocation = location;   
+#endif
+   // double minVal, maxVal;
    // cv::minMaxLoc(depthCvPtr->image, &minVal, &maxVal);
    // depthCvPtr->image.convertTo(depthCvPtr->image, CV_8U, 255/(maxVal-minVal) ,-minVal * 255.0/(maxVal - minVal));
    // imshow("depth", depthCvPtr->image);
@@ -163,6 +184,30 @@ public:
     imshow(OPENCV_WINDOW, rgbCvPtr->image);
     cv::waitKey(1);
   }
+#ifdef DUMBFOLLOW
+  void dumbFollower()
+  {
+    if(objectDistance==NULL || objectLocation==NULL)
+    {
+    return;
+    }
+//linear velocity controller
+    float curLinError = *objectDistance - goalDistance;
+    static float curLinErrorSum = 0;
+    curLinErrorSum += curLinError;
+    float linearVelocity = (curLinError*linKp) + (curLinErrorSum*linKi);
+//end linear velocity controller
+
+//angular velocity controller
+    float curAngError = *objectLocation - goalLocation;
+    float angularVelocity = curAngError*angKp;
+//end angular velocity controller
+    geometry_msgs::Twist curVelocity;
+    curVelocity.linear.x = linearVelocity + angularVelocity;
+    curVelocity.angular.z = linearVelocity - angularVelocity;
+    rpm_pub.publish(curVelocity);
+  }
+#endif
 
   virtual void spin()
   {
@@ -176,6 +221,10 @@ public:
 
   virtual void spinOnce()
   {
+#ifdef DUMBFOLLOW
+    
+    dumbFollower();
+#endif
     process();
     ros::spinOnce();
   }     
