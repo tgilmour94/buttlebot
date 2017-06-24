@@ -5,10 +5,19 @@
 #include <ros/console.h>
 //#include <string.h>
 
+#define	SOP			  0
+#define CMD			  1
+#define LEN			  2
+#define CTL_BYTE	3
+#define ANGVELH		6
+#define ANGVELL		7
+#define LINVELH		8
+#define LINVELL		9
+#define XOR			  12
+
+int getCheckSum(volatile unsigned char *data, int length);
+
 serial::Serial ser;
-std::string BEGINCODE = "55AC09000000000000000000F0";
-std::string EXITCODE = "55AE09000000000000000000";
-std::string RTDATACODE = "55AB09000000000000000000F7";
 
 void CallBackMotorControl(const geometry_msgs::Twist& vel)
 {
@@ -19,7 +28,7 @@ void CallBackBeeper(const std_msgs::Empty& msg)
  // ser.write(BEEPERCODE);
 }
 
-int serialSetup()
+int serialSetup(*data)
 {
   try
   {
@@ -37,7 +46,7 @@ int serialSetup()
   if(ser.isOpen())
   {
     ROS_INFO("Serial Port Initialized");
-    ser.write(BEGINCODE);
+    ser.write(data, 13);
     return 1;
   }
   else return 0;
@@ -45,19 +54,45 @@ int serialSetup()
 
 int main(int argc, char **argv)
 {
+  // Variables
+
+	unsigned char cmdSetup[] = { 0x55, 0xac, 0x09, 0x00, 0x00, 0x00, 0x00,
+						                   0x00, 0x00, 0x00, 0x00, 0x00, 0xF0};
+	unsigned char cmdGetData[] = { 0x55, 0xAB, 0x09, 0x00, 0x00, 0x00, 0x00,
+								                 0x00, 0x00, 0x00, 0x00, 0x00, 0xF7 };
+	unsigned char cmdSend[] = { 0x55, 0xAB, 0x09, 0x00, 0x00, 0x00, 0x00,
+								              0x00, 0x00, 0x00, 0x00, 0x00, 0xF7 };
+
+  // Code Space
   ros::init(argc,argv,"motor_driver");
   ros::NodeHandle nh;
   ros::Subscriber velSub = nh.subscribe("velocity_commands", 1, CallBackMotorControl);
   ros::Subscriber beepSub = nh.subscribe("beeper", 10, CallBackBeeper);
-  if(!serialSetup()) return 0; 
+  if(!serialSetup(&cmdSetup[0])) return 0;
   ros::Rate rate (10);
+
+  // Test - Turn on motors
+  cmdSend[LINVELL] = 0x10;
+  cmdSend[LINVELH] = 0x10;
+
   while(ros::ok())
   {
-    ser.write(RTDATACODE);
+
+    cmdSend[XOR] = getCheckSum(&cmdSend[0], 12);
+    ser.write(&cmdSend[0], 13);
     ros::spinOnce();
     rate.sleep();
   }
   ser.write(EXITCODE);
   return 0;
 
+}
+
+int getCheckSum(volatile unsigned char *data, int length) {
+
+	char XorVal = 0;
+	for (int i = 0; i < length; i++) {
+		XorVal ^= *data++;
+	}
+	return XorVal;
 }
