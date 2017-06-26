@@ -13,7 +13,7 @@
 #define LINVELH		8
 #define LINVELL		9
 #define XOR		12
-#define KARTRADIUS      275
+#define KARTRADIUS      271.4625
 
 int getCheckSum(volatile unsigned char *data, int length);
 
@@ -32,7 +32,7 @@ linvelL is lsb
 0xffff - (speed in mm/s converted to hex) = forward speed 
 */
   linearVelocity = (int)vel.linear.x;
-  angularVelocity = -vel.angular.z*KARTRADIUS;
+  angularVelocity = (int)(-vel.angular.z*KARTRADIUS);
 }
 
 void CallBackBeeper(const std_msgs::Empty& msg)
@@ -83,58 +83,24 @@ int main(int argc, char **argv)
   while(ros::ok())
   {
     //Update Linear & Angular Velocity
-    int linQuotient;
-    int angQuotient;
+    int linGoal;
+    int angGoal;
     if(linearVelocity > 0)
     {
-      linQuotient = 65535 - linearVelocity;
-      angQuotient = 65535 - angularVelocity;
+      linGoal = 65535 - linearVelocity;
+      angGoal = 65535 - angularVelocity;
     }
     else 
     {
-      linQuotient = -linearVelocity;
-      angQuotient = -angularVelocity;
+      linGoal = -linearVelocity;
+      angGoal = -angularVelocity;
     }
-    unsigned char linTempChar = 0x00;
-    unsigned char angTempChar = 0x00;
-    for(int i=0;i<4;i++)
-    {
-      int linTemp = linQuotient%16;
-      int angTemp = angQuotient%16;
-      switch(i)
-      {
-        case 0:
-        cmdSend[ANGVELL] = 0x00 + angTemp;
-        cmdSend[LINVELL] = 0x00 + linTemp;
-        break;
-
-        case 1:
-        linTempChar = linTemp;
-        linTempChar <<=4;
-        cmdSend[LINVELL] = linTempChar | cmdSend[LINVELL];
-        angTempChar = angTemp;
-        angTempChar <<=4;
-        cmdSend[ANGVELL] = angTempChar | cmdSend[ANGVELL];       
-        break;
-
-        case 2:  
-        cmdSend[LINVELH] = 0x00 + linTemp;
-        cmdSend[ANGVELH] = 0x00 + angTemp;
-        break;
+    cmdSend[LINVELL] = 0xFF & linGoal;
+    cmdSend[LINVELH] = 0xFF & (linGoal >> 8);
+    cmdSend[ANGVELL] = 0xFF & angGoal;
+    cmdSend[ANGVELH] = 0xFF & (angGoal >> 8);
      
-        case 3:
-        linTempChar = linTemp;
-        linTempChar <<=4;
-        cmdSend[LINVELH] = linTempChar | cmdSend[LINVELH]; 
-        angTempChar = angTemp;
-        angTempChar <<=4;
-        cmdSend[ANGVELH] = angTempChar | cmdSend[ANGVELH];
-        break;
-      }
-      linQuotient = linQuotient/16;
-      angQuotient = angQuotient/16;
-    } 
-   // ROS_INFO("%d, %d",cmdSend[LINVELH],cmdSend[LINVELL]);
+   
     //END Update Linear& Angular Velocity
 
 
@@ -144,7 +110,6 @@ int main(int argc, char **argv)
     ros::spinOnce();
     rate.sleep();
   }
-  //ser.write(EXITCODE);
   return 0;
 
 }
