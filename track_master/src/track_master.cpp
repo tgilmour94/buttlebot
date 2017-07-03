@@ -5,7 +5,14 @@
 #include <sensor_msgs/image_encodings.h>
 #include "opencv2/imgproc/imgproc.hpp"
 #include "opencv2/highgui/highgui.hpp"
+#include <math.h>
 #include <sstream>
+
+#define THRESHHIGH 1200.0
+#define THRESHLOW 800.0
+#define MINERROR 10.0
+#define FOLLOW 2
+#define WAIT 3
 
 //#define ROSINFO
 #define DUMBFOLLOW
@@ -15,12 +22,11 @@
  char dim0_label[] = "velocity";
  const float goalDistance = 1000.0;
  const float goalLocation = 320.0;
- const float linKp = 0.1;
- const float linKi = 0.01;
- const float angKp = 0.1;
+ const float linKp = 1.25;
+ const float angKp = 0.004;
 #endif
- int lowH = 55;
- int highH = 105;
+ int lowH = 0;
+ int highH = 255;
  int lowS = 0;
  int highS = 255;
  int lowV = 0;
@@ -43,8 +49,6 @@ protected:
   cv_bridge::CvImagePtr depthCvPtr;
 #ifdef DUMBFOLLOW
   ros::Publisher rpm_pub;
-  float *objectDistance = NULL;
-  float *objectLocation = NULL;
 #endif
 
 public:
@@ -68,7 +72,7 @@ public:
     cv::createTrackbar("Value Upper Bound", "controller", &highV, highV);
   }
 
-  ~ImageConverter() //~ means bitwise NOT so when imageconverter object is closed
+  ~ImageConverter() 
   {
     cv::destroyAllWindows();
   }
@@ -92,7 +96,7 @@ public:
 #endif
   }
 
-  void process()
+  void process(float *objectDist, float *objectLoc)
   {
 //you may notice that before processing the data, I copy the shared pointer. 
 //This is to ensure that, if you use an ASyncSpinner, your image won't change in the 
@@ -146,7 +150,6 @@ public:
     erode(HSV,HSV, cv::getStructuringElement(cv::MORPH_ELLIPSE,cv::Size(9,9)) );
     
     cv::medianBlur(depthCvPtr->image,depthCvPtr->image,5);
-    //cv::GaussianBlur(depthCvPtr->image,depthCvPtr->image,cv::Size(13,13),0,0);
 
     double aveDepth = 0;
     double aveLocation = 0;
@@ -173,9 +176,9 @@ public:
     os << "depth: " << depth << " mm " ; 
     cv::putText(HSV, os.str() ,cv::Point(rgbCvPtr->image.cols/4, rgbCvPtr->image.rows/8),1,1, cv::Scalar(255,255,255),2); 
 #ifdef DUMBFOLLOW
-    *objectDistance = depth;
-    *objectLocation = location;   
-#endif
+    *objectDist = depth;
+    *objectLoc = location;   
+#endif 
    // double minVal, maxVal;
    // cv::minMaxLoc(depthCvPtr->image, &minVal, &maxVal);
    // depthCvPtr->image.convertTo(depthCvPtr->image, CV_8U, 255/(maxVal-minVal) ,-minVal * 255.0/(maxVal - minVal));
@@ -185,54 +188,73 @@ public:
     cv::waitKey(1);
   }
 #ifdef DUMBFOLLOW
-  void dumbFollower()
+  void dumbFollower(float *objectDistance, float *objectLocation)
   {
     if(objectDistance==NULL || objectLocation==NULL)
     {
     return;
     }
-//linear velocity controller
-    float curLinError = *objectDistance - goalDistance;
-    static float curLinErrorSum = 0;
-    curLinErrorSum += curLinError;
-    float linearVelocity = (curLinError*linKp) + (curLinErrorSum*linKi);
-//end linear velocity controller
 
-//angular velocity controller
-    float curAngError = *objectLocation - goalLocation;
-    float angularVelocity = curAngError*angKp;
-//end angular velocity controller
-    geometry_msgs::Twist curVelocity;
-    curVelocity.linear.x = linearVelocity + angularVelocity;
-    curVelocity.angular.z = linearVelocity - angularVelocity;
-    rpm_pub.publish(curVelocity);
-  }
-#endif
+    static int state = FOLLOW;
 
-  virtual void spin()
-  {
-    ros::Rate rate (30);
-    while (ros::ok())
+    if(state == FOLLOW)
     {
-      spinOnce();
-      rate.sleep();
-    }
-  }
+	//linear velocity controller
+	    float curLinError = *objectDistance - goalDistance;
+	    float linearVelocity = (curLinError*linKp);
+	//end linear velocity controller
 
-  virtual void spinOnce()
-  {
-#ifdef DUMBFOLLOW
-    
-    dumbFollower();
+	//angular velocity controller 
+	    float curAngError = *objectLocation - goalLocation;
+	    float angularVelocity = curAngError*angKp; 
+	//end angular velocity controller
+	    geometry_msgs::Twist curVelocity;
+	    curVelocity.linear.x = linearVelocity ;
+	    curVelocity.angular.z = angularVelocity;
+	    rpm_pub.publish(curVelocity);
+            if(abs(curLinError) <= MINERROR)
+	    {
+              state = WAIT;
+              curVelocity.linear.x = 0;
+	      curVelocity.angular.z = 0;
+	      rpm_pub.publish(curVelocity);
+            }
+            
+    }
+    else if(state == WAIT)
+    {
+      
+      if(*objectDistance > THRESHHIGH || *objectDistance < THRESHLOW)
+      {
+        state = FOLLOW;
+      }
+    }
+   
+  }
 #endif
-    process();
+
+  virtual void spinOnce(float *distance, float *location)
+  {
+    process(distance, location);
+
+#ifdef DUMBFOLLOW
+    dumbFollower(distance, location);
+#endif
+
     ros::spinOnce();
   }     
 };
 
 int main(int argc, char** argv)
 {
-  ros::init(argc, argv, "test");
+  ros::init(argc, argv, "track_master");
   ImageConverter ic;
-  ic.spin();
+  ros::Rate rate (30);
+  float objectDistance;
+  float objectLocation;
+  while (ros::ok())
+  {
+    ic.spinOnce(&objectDistance, &objectLocation);
+    rate.sleep();
+  }
 }
