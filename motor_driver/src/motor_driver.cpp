@@ -31,7 +31,7 @@ linvelL is lsb
 0x0000 + (speed in mm/s converted to hex) = backward speed 
 0xffff - (speed in mm/s converted to hex) = forward speed 
 */
-  linearVelocity = (int)vel.linear.x;
+  linearVelocity = (int)(vel.linear.x*1000.0);
   angularVelocity = (int)(-vel.angular.z*KARTRADIUS);
 }
 
