@@ -200,5 +200,3 @@ include_directories(
 # catkin_add_nosetests(test)
 add_executable(motor_driver src/motor_driver.cpp)
 target_link_libraries(motor_driver ${catkin_LIBRARIES})
-add_executable(joystick_converter src/joystick_converter.cpp)
-target_link_libraries(joystick_converter ${catkin_LIBRARIES})
