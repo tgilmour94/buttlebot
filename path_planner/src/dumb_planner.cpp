@@ -4,7 +4,7 @@
 #include <std_msgs/Empty.h>
 #include <ros/console.h>
 
-#define PIDCHANGER // allows you to change PID values of the motion planner in order to test smooth response
+//#define PIDCHANGER // allows you to change PID values of the motion planner in order to test smooth response
 
 #ifdef PIDCHANGER
 #include <std_msgs/Float32.h>
