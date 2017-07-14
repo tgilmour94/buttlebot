@@ -6,19 +6,20 @@
     <!-- start sensor-->
     <include file="$(find freenect_launch)/launch/freenect.launch">
         <arg name="camera" default="$(arg camera)"/>
+        <arg name="depth_registration" value="true" />
     </include>
    
     <node pkg="robot_info" type="robot_info" name="robot_info" required="true" />
 
-    <node pkg="track_master" type="track_master" name="track_master" respawn="true"/>
+    <node pkg="track_master" type="track_master" name="track_master"/>
 
-    <node pkg="path_planner" type="dumb_planner" name="dumb_planner" respawn="true"/>
+    <node pkg="path_planner" type="dumb_planner" name="dumb_planner"/>
    
-    <node pkg="motor_driver" type="motor_driver" name="motor_driver" respawn="true" />
-
+    <node pkg="motor_driver" type="motor_driver" name="motor_driver" respawn="true"/>
+ <!--
     <node pkg="rosserial_python" type="serial_node.py" name="rosserial" output="screen" required="true">
         <param name="port" value="/dev/ttyACM0" />
         <param name="baud" value="57600" />
     </node>
-
+-->
 </launch>

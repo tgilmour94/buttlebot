@@ -31,8 +31,8 @@ float ANGKP = 1.5;
 
 const ros::Duration TIMEOUT(0.5);
 
-float objectDistance;
-float objectLocation;
+float objectDistance = 1.0;
+float objectLocation = 0.0;
 ros::Time lastGoalTime;
 
 void CallBackGoalLocation(const geometry_msgs::Vector3Stamped& goal)
@@ -67,11 +67,12 @@ int main(int argc, char **argv)
 
   ros::Rate rate (30);
   lastGoalTime = ros::Time::now();
-  static int state = FOLLOW;
+  
   
   while(ros::ok())
   {
-    if( (ros::Time::now() - lastGoalTime) > TIMEOUT)
+    static int state = WAIT;
+    if( ((ros::Time::now() - lastGoalTime) > TIMEOUT) && state != WAIT)
     {
       state = WAIT;
     //  ROS_INFO("TIMEOUT");
@@ -79,6 +80,7 @@ int main(int argc, char **argv)
       curVelocity.linear.x = 0;
       curVelocity.angular.z = 0;
       velPub.publish(curVelocity);
+     
     }
     if(state == FOLLOW)
     {
@@ -94,7 +96,7 @@ int main(int argc, char **argv)
 
       geometry_msgs::Twist curVelocity;
       curVelocity.linear.x = linearVelocity;
-      curVelocity.angular.z = angularVelocity;
+      curVelocity.angular.z = -angularVelocity;
       velPub.publish(curVelocity);
       if(fabs(curLinError) <= MINERROR && fabs(curAngError) <= MINANGERROR)
       {
