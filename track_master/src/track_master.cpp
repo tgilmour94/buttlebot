@@ -24,12 +24,12 @@
  int lowV = 0;
  int highV = 255;
 #else
- int lowH = 58;
- int highH = 97;
- int lowS = 66;
- int highS = 168;
- int lowV = 65;
- int highV = 184;
+ int lowH = 21;// teal 58;
+ int highH = 36;// teal 97;
+ int lowS = 107;// teal 66;
+ int highS = 255;// teal 168;
+ int lowV = 25;// teal 65;
+ int highV = 220;// teal 184;
 #endif
 
 class ImageConverter

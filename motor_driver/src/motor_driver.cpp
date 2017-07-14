@@ -1,6 +1,7 @@
 #include <ros/ros.h>
 #include <geometry_msgs/Twist.h>
-#include <std_msgs/Empty.h>
+#include <std_msgs/UInt8.h>
+#include <std_msgs/Float32.h>
 #include <serial/serial.h>
 #include <ros/console.h>
 
@@ -20,6 +21,8 @@ int getCheckSum(volatile unsigned char *data, int length);
 serial::Serial ser;
 int linearVelocity = 0;
 int angularVelocity = 0;
+int beepcount = 0;
+std_msgs::Float32 voltage;
 
 void CallBackMotorControl(const geometry_msgs::Twist& vel)
 {
@@ -35,9 +38,9 @@ linvelL is lsb
   angularVelocity = (int)(-vel.angular.z*KARTRADIUS);
 }
 
-void CallBackBeeper(const std_msgs::Empty& msg)
+void CallBackBeeper(const std_msgs::UInt8& msg)
 {
- // ser.write(BEEPERCODE);
+ beepcount = msg.data;
 }
 
 int serialSetup(unsigned char *data)
@@ -69,14 +72,16 @@ int main(int argc, char **argv)
   // Variables
 
   unsigned char cmdSetup[] = { 0x55, 0xac, 0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF0};
-  unsigned char cmdGetData[] = { 0x55, 0xAB, 0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF7 };
+  unsigned char cmdGetData[8];
   unsigned char cmdSend[] = { 0x55, 0xAB, 0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF7 };
+
 
   // Code Space
   ros::init(argc,argv,"motor_driver");
   ros::NodeHandle nh;
   ros::Subscriber velSub = nh.subscribe("velocity_commands", 1, CallBackMotorControl);
-  ros::Subscriber beepSub = nh.subscribe("beeper", 10, CallBackBeeper);
+  ros::Subscriber beepSub = nh.subscribe("beep_command", 1, CallBackBeeper);
+  ros::Publisher voltPub = nh.advertise<std_msgs::Float32>("battery_voltage",1);
   if(!serialSetup(&cmdSetup[0])) return 0;
   ros::Rate rate (10);
 
@@ -99,14 +104,30 @@ int main(int argc, char **argv)
     cmdSend[LINVELH] = 0xFF & (linGoal >> 8);
     cmdSend[ANGVELL] = 0xFF & angGoal;
     cmdSend[ANGVELH] = 0xFF & (angGoal >> 8);
-     
-   
     //END Update Linear& Angular Velocity
+    //Update beeper status
+    if(beepcount > 0)
+    {
+      cmdSend[CTL_BYTE] = 0x08;
+      beepcount--;
+    }
+    else cmdSend[CTL_BYTE] = 0x00;
+    
 
 
     //Send Command
     cmdSend[XOR] = getCheckSum(&cmdSend[0], 12);
     ser.write(&cmdSend[0], 13);
+    
+    //Read incoming data
+    ser.read(&cmdGetData[0], 8);
+
+    if(cmdGetData[1] == 0xE1) //if voltage info
+    { 
+      voltage.data = ((cmdGetData[5] <<8)+cmdGetData[6])/1000.0;
+      voltPub.publish(voltage);
+    }
+  
     ros::spinOnce();
     rate.sleep();
   }
