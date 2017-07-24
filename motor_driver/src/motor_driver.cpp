@@ -15,6 +15,9 @@
 #define LINVELL		9
 #define XOR		12
 #define KARTRADIUS      271.4625
+#define VOLTAGEYAWREAD  0xE1
+#define ODOMREAD        0xE8
+
 
 int getCheckSum(volatile unsigned char *data, int length);
 
@@ -122,12 +125,19 @@ int main(int argc, char **argv)
     //Read incoming data
     ser.read(&cmdGetData[0], 8);
 
-    if(cmdGetData[1] == 0xE1) //if voltage info
+    if(cmdGetData[1] == VOLTAGEYAWREAD) //if voltage + yaw info
     { 
       voltage.data = ((cmdGetData[5] <<8)+cmdGetData[6])/1000.0;
       voltPub.publish(voltage);
+      float yawinfo = ((cmdGetData[3] <<8)+cmdGetData[4])/1000.0;
+      ROS_INFO("%f",yawinfo);
+
     }
-  
+    else if(cmdGetData[1] == ODOMREAD) //if odom info
+    {
+      float odominfo = ((cmdGetData[3] <<24) + (cmdGetData[4] <<16) + (cmdGetData[5] <<8) + cmdGetData[6])/1000.0;
+      ROS_INFO("%f",odominfo);
+    } 
     ros::spinOnce();
     rate.sleep();
   }
